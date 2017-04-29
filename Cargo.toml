@@ -4,4 +4,6 @@ version = "0.1.0"
 authors = ["cbreeden <github@u.breeden.cc>"]
 
 [dependencies]
-rand = "*"
+rand = "0.3.15"
+gnuplot = "0.0.22"
+statrs = "0.6.0"

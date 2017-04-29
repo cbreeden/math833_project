@@ -20,24 +20,30 @@ macro_rules! scaled_funcs {
 
 scaled_funcs!(
     r_01,  0.0,   1.0,  61.0,  2.0,
-    r_10,  4.0,   0.0,  63.0,  2.0,
-    evap,  0.2,   0.2,   0.0,  0.0,
-    prec,  2.0,  10.0,  64.5,  1.0,
+    r_10,  4.0,   0.0,  61.0,  2.0,
+    evap,  0.4,   0.4,   0.0,  0.0,
+    prec,  3.0,   3.0,  64.5,  1.0,
     d2_0,  2.0,   2.0,   0.0,  0.0,
     d2_1,  16.0, 64.04, 64.5,  1.0
 );
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum State {
     Precipitating,
     NotPrecipitating,
 }
 
-impl From<State> for PlotOption<'static> {
-    fn from(s: State) -> PlotOption<'static> {
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum StateHistory {
+    Precipitating(f64),
+    NotPrecipitating(f64),
+}
+
+impl From<StateHistory> for PlotOption<'static> {
+    fn from(s: StateHistory) -> PlotOption<'static> {
         match s {
-            State::Precipitating    => Color("blue"),
-            State::NotPrecipitating => Color("red"),
+            StateHistory::Precipitating(_)    => Color("blue"),
+            StateHistory::NotPrecipitating(_) => Color("red"),
         }
     }
 }
@@ -46,8 +52,9 @@ pub struct MarkovChain {
     state:   State,
     cwv:     f64,
     h:       f64,
+    prec:    f64,
     event:   Vec<f64>,
-    history: Vec<(State, Vec<f64>)>,
+    history: Vec<(StateHistory, Vec<f64>)>,
     rng:     rand::ThreadRng,
     uniform: Range<f64>,
     noise:   Normal,
@@ -59,6 +66,7 @@ impl MarkovChain {
             state:    state,
             cwv:      cwv,
             h:        h,
+            prec:     0.,
             event:    vec![cwv],
             history:  Vec::new(),
             rng:      rand::thread_rng(),
@@ -75,29 +83,35 @@ impl MarkovChain {
         match self.state {
             State::NotPrecipitating => {
                 let w = d2_0(self.cwv).sqrt() * w;
-                self.cwv += evap(self.cwv) * self.h + w;
+                self.prec += evap(self.cwv) * self.h;
+                self.cwv += self.prec + w;
 
                 self.event.push(self.cwv);
 
                 if u <= 1.0 - (-self.h * r_01(self.cwv)).exp() {
-                // if u <= self.h * r_01(self.cwv) {
                     self.state = State::Precipitating;
                     let event = mem::replace(&mut self.event, Vec::new());
-                    self.history.push( (State::NotPrecipitating, event) );
+                    self.history.push(
+                        (StateHistory::NotPrecipitating(self.prec), event)
+                    );
+                    self.prec = 0.0;
                 }
             },
 
             State::Precipitating => {
                 let w = d2_1(self.cwv).sqrt() * w;
-                self.cwv += -prec(self.cwv) * self.h + w;
+                self.prec += -prec(self.cwv) * self.h;
+                self.cwv += self.prec - w;
 
                 self.event.push(self.cwv);
 
                 if u <= 1.0 - (-self.h * r_10(self.cwv)).exp() {
-                // if u <= self.h * r_10(self.cwv) {
                     self.state = State::NotPrecipitating;
                     let event = mem::replace(&mut self.event, Vec::new());
-                    self.history.push( (State::Precipitating, event) );
+                    self.history.push(
+                        (StateHistory::Precipitating(self.prec), event)
+                    );
+                    self.prec = 0.0;
                 }
             }
         }
@@ -107,22 +121,26 @@ impl MarkovChain {
         for _ in 0..n {
             self.sample();
 
-            if self.cwv > 120.0 || self.cwv < 25.0 {
-                println!("Unlikely CWV Error");
-                println!("state: {:?}", self.state);
-                println!("CWV: {}", self.cwv);
-                println!("Event: {:?}", self.event);
-                break;
-            }
+            // if self.cwv > 120.0 || self.cwv < 25.0 {
+            //     println!("Unlikely CWV Error");
+            //     println!("state: {:?}", self.state);
+            //     println!("CWV: {}", self.cwv);
+            //     println!("Event: {:?}", self.event);
+            //     break;
+            // }
         }
     }
 
-    pub fn get_history(&mut self) -> &[(State, Vec<f64>)] {
+    pub fn get_history(&mut self) -> &[(StateHistory, Vec<f64>)] {
         if !self.event.is_empty() {
             let event = mem::replace(&mut self.event, Vec::new());
-            self.history.push( (self.state, event) );
+            let state = match self.state {
+                State::NotPrecipitating => StateHistory::NotPrecipitating(self.prec),
+                State::Precipitating    => StateHistory::Precipitating(self.prec),
+            };
+            self.history.push( (state, event) );
         }
-        
+
         &self.history
     }
 }

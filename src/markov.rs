@@ -20,11 +20,11 @@ macro_rules! scaled_funcs {
 
 scaled_funcs!(
     r_01,  0.0,   1.0,  61.0,  2.0,
-    r_10,  4.0,   0.0,  61.0,  2.0,
-    evap,  0.4,   0.4,   0.0,  0.0,
-    prec,  3.0,   3.0,  64.5,  1.0,
+    r_10,  4.0,   0.0,  63.0,  2.0,
+    evap,  0.2,   0.2,   0.0,  0.0,
+    prec,  2.0,  10.0,  64.5,  1.0,
     d2_0,  2.0,   2.0,   0.0,  0.0,
-    d2_1,  16.0, 64.04, 64.5,  1.0
+    d2_1, 16.0,  64.04, 64.5,  1.0
 );
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -79,38 +79,34 @@ impl MarkovChain {
         let w = self.noise.ind_sample(&mut self.rng);
         let u = self.uniform.ind_sample(&mut self.rng);
 
-        // Update cwv = q
         match self.state {
             State::NotPrecipitating => {
-                let w = d2_0(self.cwv).sqrt() * w;
-                self.prec += evap(self.cwv) * self.h;
-                self.cwv += self.prec + w;
+                let w      = d2_0(self.cwv).sqrt() * w;
+                self.cwv  += evap(self.cwv) * self.h + w;
 
                 self.event.push(self.cwv);
 
                 if u <= 1.0 - (-self.h * r_01(self.cwv)).exp() {
                     self.state = State::Precipitating;
-                    let event = mem::replace(&mut self.event, Vec::new());
+                    let event  = mem::replace(&mut self.event, Vec::new());
                     self.history.push(
-                        (StateHistory::NotPrecipitating(self.prec), event)
-                    );
+                        (StateHistory::NotPrecipitating(0.0), event));
                     self.prec = 0.0;
                 }
             },
 
             State::Precipitating => {
-                let w = d2_1(self.cwv).sqrt() * w;
-                self.prec += -prec(self.cwv) * self.h;
-                self.cwv += self.prec - w;
+                let w      =  d2_1(self.cwv).sqrt() * w;
+                self.prec +=  prec(self.cwv) * self.h;
+                self.cwv  += -prec(self.cwv) * self.h + w;
 
                 self.event.push(self.cwv);
 
                 if u <= 1.0 - (-self.h * r_10(self.cwv)).exp() {
                     self.state = State::NotPrecipitating;
-                    let event = mem::replace(&mut self.event, Vec::new());
+                    let event  = mem::replace(&mut self.event, Vec::new());
                     self.history.push(
-                        (StateHistory::Precipitating(self.prec), event)
-                    );
+                        (StateHistory::Precipitating(self.prec), event));
                     self.prec = 0.0;
                 }
             }
@@ -121,13 +117,13 @@ impl MarkovChain {
         for _ in 0..n {
             self.sample();
 
-            // if self.cwv > 120.0 || self.cwv < 25.0 {
-            //     println!("Unlikely CWV Error");
-            //     println!("state: {:?}", self.state);
-            //     println!("CWV: {}", self.cwv);
-            //     println!("Event: {:?}", self.event);
-            //     break;
-            // }
+            if self.cwv > 140.0 || self.cwv < 1.0 {
+                println!("Unlikely CWV Error");
+                println!("state: {:?}", self.state);
+                println!("CWV: {}", self.cwv);
+                println!("Event: {:?}", self.event);
+                panic!();
+            }
         }
     }
 
@@ -165,6 +161,9 @@ mod test {
         let mut fg = Figure::new();
         fg.set_terminal("pngcairo", "transitions.png")
             .axes2d()
+            .set_title("Transition Rates", &[])
+            .set_x_label("column water vapor (mm)", &[])
+            .set_y_label("intensity", &[])
             .set_y_range(AutoOption::Fix(-1.0), AutoOption::Fix(5.0))
             .set_aspect_ratio(AutoOption::Fix(0.5))
             .lines(&xs, &r01_ys, &[Caption("r_{01}"), Color("black")])
@@ -178,11 +177,14 @@ mod test {
         let mut fg = Figure::new();
         fg.set_terminal("pngcairo", "source.png")
             .axes2d()
-            .set_legend(Graph(0.35), Graph(0.9), &[], &[])
-            .set_y_range(AutoOption::Fix(-1.0), AutoOption::Fix(11.0))
             .set_aspect_ratio(AutoOption::Fix(0.5))
-            .lines(&xs, &evap_ys, &[Caption("Evaporation"), Color("black")])
-            .lines(&xs, &prec_ys, &[Caption("Precipitation"), Color("blue")]);
+            .set_title("Source Terms", &[])
+            .set_x_label("column water vapor (mm)", &[])
+            .set_y_label("mm h^{-1}", &[])
+            .set_y_range(AutoOption::Fix(-1.0), AutoOption::Fix(11.0))
+            .set_legend(Graph(0.25), Graph(0.9), &[], &[])
+            .lines(&xs, &evap_ys, &[Caption("E(q)"), Color("black")])
+            .lines(&xs, &prec_ys, &[Caption("P(q)"), Color("blue")]);
 
         fg.show();
 
@@ -192,6 +194,9 @@ mod test {
         let mut fg = Figure::new();
         fg.set_terminal("pngcairo", "noise.png")
             .axes2d()
+            .set_title("Stochastic Noise Coefficients", &[])
+            .set_x_label("column water vapor (mm)", &[])
+            .set_y_label("mm^2 h^{-1}", &[])
             .set_legend(Graph(0.35), Graph(0.9), &[], &[])
             .set_y_range(AutoOption::Fix(-3.0), AutoOption::Fix(70.0))
             .set_aspect_ratio(AutoOption::Fix(0.5))

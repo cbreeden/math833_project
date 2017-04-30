@@ -1,8 +1,7 @@
 use rand;
 use rand::distributions::{IndependentSample, Range, Normal};
 use std::mem;
-
-use gnuplot::{PlotOption, Color};
+use state::{State, StateHistory};
 
 fn scaled_tanh(q: f64, neg_inf: f64, inf: f64, q_mid: f64, q_width: f64) -> f64 {
     neg_inf + 0.5 * (inf - neg_inf) * (1.0 + ( (q - q_mid) / q_width ).tanh() )
@@ -27,28 +26,7 @@ scaled_funcs!(
     d2_1, 16.0,  64.04, 64.5,  1.0
 );
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum State {
-    Precipitating,
-    NotPrecipitating,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum StateHistory {
-    Precipitating(f64),
-    NotPrecipitating(f64),
-}
-
-impl From<StateHistory> for PlotOption<'static> {
-    fn from(s: StateHistory) -> PlotOption<'static> {
-        match s {
-            StateHistory::Precipitating(_)    => Color("blue"),
-            StateHistory::NotPrecipitating(_) => Color("red"),
-        }
-    }
-}
-
-pub struct MarkovChain {
+pub struct MarkovChain2011 {
     state:   State,
     cwv:     f64,
     h:       f64,
@@ -60,9 +38,9 @@ pub struct MarkovChain {
     noise:   Normal,
 }
 
-impl MarkovChain {
-    pub fn new(state: State, cwv: f64, h: f64) -> MarkovChain {
-        MarkovChain {
+impl MarkovChain2011 {
+    pub fn new(state: State, cwv: f64, h: f64) -> MarkovChain2011 {
+        MarkovChain2011 {
             state:    state,
             cwv:      cwv,
             h:        h,

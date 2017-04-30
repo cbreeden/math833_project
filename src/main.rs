@@ -3,42 +3,93 @@ extern crate gnuplot;
 extern crate rand;
 extern crate statrs;
 
-use std::iter;
 
 mod hist;
 use hist::Histogram;
 use hist::Range;
 
-use gnuplot::{Figure, PlotOption, AutoOption, AxesCommon};
+use gnuplot::{Figure, PlotOption, AutoOption, AxesCommon, Caption};
 
-mod markov;
-use markov::MarkovChain;
-use markov::State;
-use markov::StateHistory;
+mod state;
+use state::{State, StateHistory};
+
+mod markov2011;
+use markov2011::MarkovChain2011;
+
+mod markov2014;
+use markov2014::MarkovChain2014;
+
+const H: f64   = 0.01;         // 0.01 h = 36 s 
+const T: usize = 10*356*24*100; // 13 years.
+const S: f64   = 61.0;         // IC for CWV
 
 fn main() {
-    const H: f64   = 0.01;          // 0.01 h = 36 s 
-    const T: usize = 100*356*24*100; // 13 years.
-    const S: f64   = 61.0;          // IC for CWV
+    let mut mc11 = MarkovChain2011::new(State::NotPrecipitating, S, H);
+    mc11.simulate(T);
 
-    // Simulate using a MarkovChain
-    let mut mc = MarkovChain::new(State::NotPrecipitating, S, H);
-    mc.simulate(T);
+    let mut mc14 = MarkovChain2014::new(State::NotPrecipitating, S, H);
+    mc14.simulate(T);
 
-    let history = mc.get_history();
+    let history11 = mc11.get_history();
+    let history14 = mc14.get_history();
     
+    let mut lhist11 = Histogram::new();
+    let mut phist11 = Histogram::new();
+    let mut lhist14 = Histogram::new();
+    let mut phist14 = Histogram::new();
+
+    plot_simulation(history14,
+        "simulation14.png", 
+        "100 Day Simulation", 
+        &mut lhist14, 
+        &mut phist14);
+
+    plot_simulation(history11, 
+        "simulation11.png", 
+        "100 Day Simulation", 
+        &mut lhist11, 
+        &mut phist11);
+
+    // Plot PDF of total precipitation.
+    let mut figure = Figure::new();
+    
+    let (xs14, ys14) = phist14.axes();
+    let xs14 = xs14.into_iter().map(|x| x as f64 / 10.0);
+
+    let (xs11, ys11) = phist11.axes();
+    let xs11 = xs11.into_iter().map(|x| x as f64 / 10.0);
+
+    figure
+        .set_terminal("pngcairo", "hist.png")
+        .axes2d()
+        .set_title("Density of Total Precipitation", &[])
+        .set_x_label("total precip (mm) in precipitation event", &[])
+        .set_y_label("number of occurances", &[])
+        .set_x_log(Some(10.0))
+        .set_y_log(Some(10.0))
+        .points(xs14, ys14, &[Caption("2014 Model")])
+        .points(xs11, ys11, &[Caption("2011 Model")]);
+
+    figure.show();
+}
+
+fn plot_simulation(
+        history: &[(StateHistory, Vec<f64>)], 
+        name: &str, 
+        title: &str,   
+        length_hist: &mut Histogram, 
+        precip_hist: &mut Histogram
+    ) {
     let mut time = 0.0;
-    let mut length_hist = Histogram::new();
-    let mut precip_hist = Histogram::new();
 
     let mut figure = Figure::new();
-    figure.set_terminal("pngcairo size 1000, 300", "simulation.png");
     {
         let axis = figure
+            .set_terminal("pngcairo size 1000, 300", name)
             .axes2d()
-            .set_title("100 Day Simulation", &[])
+            .set_title(title, &[])
             .set_x_label("time in days", &[])
-            .set_y_label("CWV", &[])
+            .set_y_label("cwv", &[])
             .set_aspect_ratio(AutoOption::Fix(0.2));
 
         for &(event, ref ys) in history {
@@ -55,33 +106,14 @@ fn main() {
                 StateHistory::Precipitating(c) => {
                     length_hist.inc(num);   // length of event
                     
-                    let c = c as usize;     // total precipitation
+                    let c = (c * 10.0) as usize;
                     if c < 10000 {
                         precip_hist.inc(c);
                     } else { println!("Large c! {}", c); }
                 }
                 _ => { /* NOOP */ }
             }
-
         }
     }
-
-    figure.show();
-
-    // Plot PDF of total precipitation.
-    let mut figure = Figure::new();
-    let (xs, ys) = precip_hist.axes();
-    //let lxs = lxs.into_iter().map(|x| x as f64 / 100.0);
-
-    figure
-        .set_terminal("pngcairo", "hist.png")
-        .axes2d()
-        .set_title("Density of Total Precipitation", &[])
-        .set_x_label("total precip (mm) in precipitation event", &[])
-        .set_y_label("number of occurances", &[])
-        .set_x_log(Some(10.0))
-        .set_y_log(Some(10.0))
-        .points(xs, ys, &[]);
-
     figure.show();
 }

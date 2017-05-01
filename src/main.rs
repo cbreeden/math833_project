@@ -19,8 +19,8 @@ use markov2011::MarkovChain2011;
 mod markov2014;
 use markov2014::MarkovChain2014;
 
-const H: f64   = 0.01;         // 0.01 h = 36 s 
-const T: usize = 10*356*24*100; // 13 years.
+const H: f64   = 0.01;         // 0.01 h = 36 s
+const T: usize = 100*24*100; // 13 years.
 const S: f64   = 61.0;         // IC for CWV
 
 fn main() {
@@ -32,27 +32,27 @@ fn main() {
 
     let history11 = mc11.get_history();
     let history14 = mc14.get_history();
-    
+
     let mut lhist11 = Histogram::new();
     let mut phist11 = Histogram::new();
     let mut lhist14 = Histogram::new();
     let mut phist14 = Histogram::new();
 
     plot_simulation(history14,
-        "simulation14.png", 
-        "100 Day Simulation", 
-        &mut lhist14, 
+        "simulation14.png",
+        "100 Day Simulation (2014)",
+        &mut lhist14,
         &mut phist14);
 
-    plot_simulation(history11, 
-        "simulation11.png", 
-        "100 Day Simulation", 
-        &mut lhist11, 
+    plot_simulation(history11,
+        "simulation11.png",
+        "100 Day Simulation (2011)",
+        &mut lhist11,
         &mut phist11);
 
     // Plot PDF of total precipitation.
     let mut figure = Figure::new();
-    
+
     let (xs14, ys14) = phist14.axes();
     let xs14 = xs14.into_iter().map(|x| x as f64 / 10.0);
 
@@ -74,10 +74,10 @@ fn main() {
 }
 
 fn plot_simulation(
-        history: &[(StateHistory, Vec<f64>)], 
-        name: &str, 
-        title: &str,   
-        length_hist: &mut Histogram, 
+        history: &[(StateHistory, Vec<f64>)],
+        name: &str,
+        title: &str,
+        length_hist: &mut Histogram,
         precip_hist: &mut Histogram
     ) {
     let mut time = 0.0;
@@ -90,7 +90,8 @@ fn plot_simulation(
             .set_title(title, &[])
             .set_x_label("time in days", &[])
             .set_y_label("cwv", &[])
-            .set_aspect_ratio(AutoOption::Fix(0.2));
+            .set_aspect_ratio(AutoOption::Fix(0.2))
+            .set_x_range(AutoOption::Fix(0.0), AutoOption::Fix(T as f64));
 
         for &(event, ref ys) in history {
             let color = PlotOption::from(event);
@@ -105,7 +106,7 @@ fn plot_simulation(
             match event {
                 StateHistory::Precipitating(c) => {
                     length_hist.inc(num);   // length of event
-                    
+
                     let c = (c * 10.0) as usize;
                     if c < 10000 {
                         precip_hist.inc(c);
